@@ -2,6 +2,7 @@ const request = require('supertest');
 const { io: ioClient } = require('socket.io-client');
 const { setupTestServer, registerUser, auth } = require('./helpers');
 const Message = require('../src/models/Message');
+const Conversation = require('../src/models/Conversation');
 
 let ctx;
 let alice;
@@ -89,6 +90,43 @@ describe('socket layer', () => {
     } finally {
       aliceSocket.disconnect();
       bobSocket.disconnect();
+    }
+  });
+
+  test('a room-scoped event is not lost when the peer connected moments earlier', async () => {
+    // Make the conversation lookup slow. Socket.IO sends the CONNECT packet
+    // before it runs the "connection" handler, so when the rooms were joined
+    // after an await in that handler, a slow lookup let the client emit before
+    // the peer had joined the room and the broadcast was dropped. The rooms are
+    // now resolved during the handshake, which is awaited before CONNECT is
+    // sent, so a slow lookup only delays the connect and the broadcast
+    // survives.
+    const realFind = Conversation.find.bind(Conversation);
+    const findSpy = jest.spyOn(Conversation, 'find').mockImplementation((...args) => {
+      const query = realFind(...args);
+      const realThen = query.then.bind(query);
+      query.then = (onFulfilled, onRejected) =>
+        realThen(
+          (value) =>
+            new Promise((resolve) => setTimeout(resolve, 300)).then(() => onFulfilled(value)),
+          onRejected,
+        );
+      return query;
+    });
+
+    const aliceSocket = await connect(alice.token);
+    const bobSocket = await connect(bob.token);
+    try {
+      const typingEvent = waitFor(bobSocket, 'typing:update', 10000);
+      aliceSocket.emit('typing:start', { conversationId });
+      const data = await typingEvent;
+      expect(data.userId).toBe(alice.id);
+      expect(data.typing).toBe(true);
+      expect(data.conversationId).toBe(conversationId);
+    } finally {
+      aliceSocket.disconnect();
+      bobSocket.disconnect();
+      findSpy.mockRestore();
     }
   });
 

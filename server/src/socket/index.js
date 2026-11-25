@@ -32,27 +32,43 @@ function isOnline(userId) {
 function initSocket(io) {
   // JWT authentication for sockets — bad/missing tokens are rejected here.
   io.use(async (socket, next) => {
+    let user;
     try {
       const token =
         (socket.handshake.auth && socket.handshake.auth.token) ||
         (socket.handshake.headers.authorization || '').replace('Bearer ', '');
       if (!token) return next(new Error('Authentication required'));
       const payload = verifyToken(token);
-      const user = await User.findById(payload.sub);
+      user = await User.findById(payload.sub);
       if (!user) return next(new Error('Invalid token'));
-      socket.user = user;
-      return next();
     } catch {
       return next(new Error('Invalid or expired token'));
     }
+    socket.user = user;
+
+    // Resolve the conversation rooms during the handshake. Socket.IO sends the
+    // CONNECT packet before it runs the "connection" handler, so an await in
+    // that handler left the socket in no room while the client had already been
+    // told it was connected, and the first room-scoped event was broadcast to an
+    // empty room. The handshake is awaited before CONNECT is sent, so resolving
+    // the rooms here closes that window.
+    try {
+      const conversations = await Conversation.find({ members: user._id }).select('_id');
+      socket.conversationIds = conversations.map((c) => c._id.toString());
+    } catch {
+      return next(new Error('Could not load conversations'));
+    }
+    return next();
   });
 
-  io.on('connection', async (socket) => {
+  io.on('connection', (socket) => {
     const userId = socket.user._id.toString();
 
     // Join a room per conversation the user belongs to + a personal room.
-    const conversations = await Conversation.find({ members: socket.user._id }).select('_id');
-    conversations.forEach((c) => socket.join(c._id.toString()));
+    // The conversation list was resolved during the handshake, so joining is
+    // synchronous: the rooms are in place before any client packet that
+    // follows CONNECT can be processed.
+    (socket.conversationIds || []).forEach((id) => socket.join(id));
     socket.join(`user:${userId}`);
 
     const cameOnline = addOnline(userId, socket.id);
