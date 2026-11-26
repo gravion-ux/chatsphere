@@ -1,7 +1,10 @@
+<p align="center"><img src="assets/banner.svg" alt="chatsphere banner" width="100%"/></p>
+
 # ChatSphere
 
-A real-time chat web application with direct (1-to-1) and group conversations, live
-presence and typing indicators, and persistent message history.
+[![CI](https://github.com/gravion-ux/chatsphere/actions/workflows/ci.yml/badge.svg)](https://github.com/gravion-ux/chatsphere/actions/workflows/ci.yml)
+
+**A real-time chat web application with direct (1-to-1) and group conversations, live presence and typing indicators, and persistent message history.**
 
 **Author:** Priyanshu Kumar Thakur (Gravion) — [github.com/gravion-ux](https://github.com/gravion-ux)
 
