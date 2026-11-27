@@ -10,6 +10,13 @@ const { errorHandler, notFound } = require('./middleware/error');
 function createApp() {
   const app = express();
   app.use(cors({ origin: config.clientOrigin, credentials: true }));
+  // Minimal security headers without an extra dependency.
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'chatsphere' }));
